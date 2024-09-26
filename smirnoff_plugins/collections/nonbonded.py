@@ -606,16 +606,72 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
             parameter = parameter_handler.parameters[smirks]
 
             self.potentials[potential_key] = Potential(
-                parameters={"polarity": parameter.polarity},
+                parameters={
+                    "dipoleX": parameter.dipoleX,
+                    "dipoleY": parameter.dipoleY,
+                    "dipoleZ": parameter.dipoleZ,
+                    "quadrupoleXX": parameter.quadrupoleXX,
+                    "quadrupoleXY": parameter.quadrupoleXY,
+                    "quadrupoleXZ": parameter.quadrupoleXZ,
+                    "quadrupoleYX": parameter.quadrupoleYX,
+                    "quadrupoleYY": parameter.quadrupoleYY,
+                    "quadrupoleYZ": parameter.quadrupoleYZ,
+                    "quadrupoleZX": parameter.quadrupoleZX,
+                    "quadrupoleZY": parameter.quadrupoleZY,
+                    "quadrupoleZZ": parameter.quadrupoleZZ,
+                    "axisType": parameter.axisType,
+                    "multipoleAtomZ": parameter.multipoleAtomZ,
+                    "multipoleAtomX": parameter.multipoleAtomX,
+                    "multipoleAtomY": parameter.multipoleAtomY,
+                    "polarity": parameter.polarity,
+                },
             )
 
     @classmethod
     def potential_parameters(cls):
-        return ("polarity",)
+        return (
+            "dipoleX",
+            "dipoleY",
+            "dipoleZ",
+            "quadrupoleXX",
+            "quadrupoleXY",
+            "quadrupoleXZ",
+            "quadrupoleYX",
+            "quadrupoleYY",
+            "quadrupoleYZ",
+            "quadrupoleZX",
+            "quadrupoleZY",
+            "quadrupoleZZ",
+            "axisType",
+            "multipoleAtomZ",
+            "multipoleAtomX",
+            "multipoleAtomY",
+            "polarity",
+        )
 
     @classmethod
     def supported_parameters(cls):
-        return "smirks", "id", "polarity"
+        return (
+            "smirks",
+            "id",
+            "dipoleX",
+            "dipoleY",
+            "dipoleZ",
+            "quadrupoleXX",
+            "quadrupoleXY",
+            "quadrupoleXZ",
+            "quadrupoleYX",
+            "quadrupoleYY",
+            "quadrupoleYZ",
+            "quadrupoleZX",
+            "quadrupoleZY",
+            "quadrupoleZZ",
+            "axisType",
+            "multipoleAtomZ",
+            "multipoleAtomX",
+            "multipoleAtomY",
+            "polarity",
+        )
 
     @classmethod
     def allowed_parameter_handlers(cls):
@@ -725,6 +781,106 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
         # Set the polarity and damping factor
         for key, val in self.key_map.items():
             params = force.getMultipoleParameters(key.atom_indices[0])
+
+            dipoleX = (
+                self.potentials[val]
+                .parameters["dipoleX"]
+                .m_as("elementary_charge * nanometer")
+            )
+            dipoleY = (
+                self.potentials[val]
+                .parameters["dipoleY"]
+                .m_as("elementary_charge * nanometer")
+            )
+            dipoleZ = (
+                self.potentials[val]
+                .parameters["dipoleZ"]
+                .m_as("elementary_charge * nanometer")
+            )
+
+            params[1] = (dipoleX, dipoleY, dipoleZ)
+
+            quadrupoleXX = (
+                self.potentials[val]
+                .parameters["quadrupoleXX"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleXY = (
+                self.potentials[val]
+                .parameters["quadrupoleXY"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleXZ = (
+                self.potentials[val]
+                .parameters["quadrupoleXZ"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleYX = (
+                self.potentials[val]
+                .parameters["quadrupoleYX"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleYY = (
+                self.potentials[val]
+                .parameters["quadrupoleYY"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleYZ = (
+                self.potentials[val]
+                .parameters["quadrupoleYZ"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleZX = (
+                self.potentials[val]
+                .parameters["quadrupoleZX"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleZY = (
+                self.potentials[val]
+                .parameters["quadrupoleZY"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+            quadrupoleZZ = (
+                self.potentials[val]
+                .parameters["quadrupoleZZ"]
+                .m_as("elementary_charge * nanometer ** 2")
+            )
+
+            params[2] = (
+                quadrupoleXX,
+                quadrupoleXY,
+                quadrupoleXZ,
+                quadrupoleYX,
+                quadrupoleYY,
+                quadrupoleYZ,
+                quadrupoleZX,
+                quadrupoleZY,
+                quadrupoleZZ,
+            )
+
+            params[3] = int(self.potentials[val].parameters["axisType"])
+
+            if self.potentials[val].parameters["multipoleAtomZ"] != -1:
+                params[4] = int(
+                    key.atom_indices[
+                        self.potentials[val].parameters["multipoleAtomZ"] - 1
+                    ]
+                )
+            if self.potentials[val].parameters["multipoleAtomX"] != -1:
+                params[5] = int(
+                    key.atom_indices[
+                        self.potentials[val].parameters["multipoleAtomX"] - 1
+                    ]
+                )
+            if self.potentials[val].parameters["multipoleAtomY"] != -1:
+                params[6] = int(
+                    key.atom_indices[
+                        self.potentials[val].parameters["multipoleAtomY"] - 1
+                    ]
+                )
+
+            params[7] = self.thole
+
             # the amoeba damping factor is polarity ** 1/6
             params[8] = self.potentials[val].parameters["polarity"].m_as(
                 "nanometer**3"
@@ -938,6 +1094,46 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
     ) -> Dict[str, float]:
         # It's important that these keys are in the order of self.potential_parameters(),
         # consider adding a check somewhere that this is the case.
-        _units = {"polarity": unit.nanometer**3}
+        _units = {
+            "polarity": unit.nanometer**3,
+            "dipole": unit.elementary_charge * unit.nanometer,
+            "quadrupole": unit.elementary_charge * unit.nanometer**2,
+        }
 
-        return {"polarity": original_parameters["polarity"].m_as(_units["polarity"])}
+        return {
+            "dipoleX": original_parameters["dipoleX"].m_as(_units["dipole"]),
+            "dipoleY": original_parameters["dipoleY"].m_as(_units["dipole"]),
+            "dipoleZ": original_parameters["dipoleZ"].m_as(_units["dipole"]),
+            "quadrupoleXX": original_parameters["quadrupoleXX"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleXY": original_parameters["quadrupoleXY"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleXZ": original_parameters["quadrupoleXZ"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleYX": original_parameters["quadrupoleYX"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleYY": original_parameters["quadrupoleYY"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleYZ": original_parameters["quadrupoleYZ"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleZX": original_parameters["quadrupoleZX"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleZY": original_parameters["quadrupoleZY"].m_as(
+                _units["quadrupole"]
+            ),
+            "quadrupoleZZ": original_parameters["quadrupoleZZ"].m_as(
+                _units["quadrupole"]
+            ),
+            "axisType": original_parameters["axisType"],
+            "multipoleAtomZ": original_parameters["multipoleAtomZ"],
+            "multipoleAtomX": original_parameters["multipoleAtomX"],
+            "multipoleAtomY": original_parameters["multipoleAtomY"],
+            "polarity": original_parameters["polarity"].m_as(_units["polarity"]),
+        }

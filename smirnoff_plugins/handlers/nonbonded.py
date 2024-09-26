@@ -13,6 +13,7 @@ from openff.toolkit.typing.engines.smirnoff.parameters import (
     _allow_only,
     vdWHandler,
 )
+from openmm import openmm
 
 
 class _CustomNonbondedHandler(ParameterHandler, abc.ABC):
@@ -183,7 +184,87 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
         _VALENCE_TYPE = "Atom"
         _ELEMENT_NAME = "Atom"
 
-        polarity = ParameterAttribute(default=None, unit=unit.nanometers**3)
+        dipoleX = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer,
+            unit=unit.elementary_charge * unit.nanometer,
+        )
+        dipoleY = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer,
+            unit=unit.elementary_charge * unit.nanometer,
+        )
+        dipoleZ = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer,
+            unit=unit.elementary_charge * unit.nanometer,
+        )
+
+        quadrupoleXX = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleXY = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleXZ = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleYX = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleYY = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleYZ = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleZX = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleZY = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+        quadrupoleZZ = ParameterAttribute(
+            default=0.0 * unit.elementary_charge * unit.nanometer**2,
+            unit=unit.elementary_charge * unit.nanometer**2,
+        )
+
+        @staticmethod
+        def axis_converter(axis_type):
+            axis_type_map = {
+                "NoAxisType": openmm.AmoebaMultipoleForce.NoAxisType,
+                "ZOnly": openmm.AmoebaMultipoleForce.ZOnly,
+                "ZThenX": openmm.AmoebaMultipoleForce.ZThenX,
+                "ZBisect": openmm.AmoebaMultipoleForce.ZBisect,
+                "Bisector": openmm.AmoebaMultipoleForce.Bisector,
+                "ThreeFold": openmm.AmoebaMultipoleForce.ThreeFold,
+            }
+            return axis_type_map[axis_type]
+
+        axisType = ParameterAttribute(
+            default=openmm.AmoebaMultipoleForce.NoAxisType * unit.dimensionless,
+            unit=unit.dimensionless,
+            converter=axis_converter,
+        )
+
+        multipoleAtomZ = ParameterAttribute(
+            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+        )
+        multipoleAtomX = ParameterAttribute(
+            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+        )
+        multipoleAtomY = ParameterAttribute(
+            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+        )
+
+        polarity = ParameterAttribute(
+            default=0.0 * unit.nanometers**3, unit=unit.nanometers**3
+        )
 
     _TAGNAME = "Multipole"
     _INFOTYPE = MultipoleType
