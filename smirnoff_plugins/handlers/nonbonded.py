@@ -1,7 +1,6 @@
 import abc
 
 from openff.toolkit import Topology, unit
-from openff.toolkit.topology import SortedDict
 from openff.toolkit.typing.engines.smirnoff.parameters import (
     ElectrostaticsHandler,
     IncompatibleParameterError,
