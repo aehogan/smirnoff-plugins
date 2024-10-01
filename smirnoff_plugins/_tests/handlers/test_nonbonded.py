@@ -1039,20 +1039,20 @@ def test_multipole_water():
             assert from_openmm(params[0]).m == pytest.approx(-2.9408235e-01)
             assert from_openmm(params[1][2]).m == pytest.approx(0.022879731 * 0.0529177)
             assert params[3] == openmm.AmoebaMultipoleForce.Bisector
+            assert (
+                params[4] == 2 + 3 * (idx // 3) and params[5] == 1 + 3 * (idx // 3)
+            ) or (params[4] == 1 + 3 * (idx // 3) and params[5] == 2 + 3 * (idx // 3))
         else:
             assert from_openmm(params[0]).m == pytest.approx(1.4704118e-01)
             assert from_openmm(params[1][0]).m == pytest.approx(-0.27867409 * 0.0529177)
             assert from_openmm(params[1][2]).m == pytest.approx(-0.83922167 * 0.0529177)
             assert params[3] == openmm.AmoebaMultipoleForce.ZThenX
-        if idx % 3 == 0:
-            assert params[4] == 2 + 3 * (idx // 3)
-            assert params[5] == 1 + 3 * (idx // 3)
-        elif idx % 3 == 1:
-            assert params[4] == 0 + 3 * (idx // 3)
-            assert params[5] == 2 + 3 * (idx // 3)
-        elif idx % 3 == 2:
-            assert params[4] == 0 + 3 * (idx // 3)
-            assert params[5] == 1 + 3 * (idx // 3)
+            if idx % 3 == 1:
+                assert params[4] == 0 + 3 * (idx // 3)
+                assert params[5] == 2 + 3 * (idx // 3)
+            elif idx % 3 == 2:
+                assert params[4] == 0 + 3 * (idx // 3)
+                assert params[5] == 1 + 3 * (idx // 3)
 
 
 def test_non_lj_on_virtual_site(ideal_water_force_field):
