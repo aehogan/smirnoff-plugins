@@ -863,19 +863,19 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
             if self.potentials[val].parameters["multipoleAtomZ"] != -1:
                 params[4] = int(
                     key.atom_indices[
-                        self.potentials[val].parameters["multipoleAtomZ"] - 1
+                        int(self.potentials[val].parameters["multipoleAtomZ"]) - 1
                     ]
                 )
             if self.potentials[val].parameters["multipoleAtomX"] != -1:
                 params[5] = int(
                     key.atom_indices[
-                        self.potentials[val].parameters["multipoleAtomX"] - 1
+                        int(self.potentials[val].parameters["multipoleAtomX"]) - 1
                     ]
                 )
             if self.potentials[val].parameters["multipoleAtomY"] != -1:
                 params[6] = int(
                     key.atom_indices[
-                        self.potentials[val].parameters["multipoleAtomY"] - 1
+                        int(self.potentials[val].parameters["multipoleAtomY"]) - 1
                     ]
                 )
 

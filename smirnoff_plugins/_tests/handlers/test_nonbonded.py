@@ -953,6 +953,108 @@ def test_multipole_de6810_axilrod_options():
     assert from_openmm(omm_state.getPotentialEnergy()).m == pytest.approx(0.0)
 
 
+def test_multipole_water():
+    ff = ForceField(load_plugins=True)
+
+    de6810_handler = ff.get_parameter_handler("DampedExp6810", {"version": "0.3"})
+
+    de6810_handler.add_parameter(
+        {
+            "smirks": "[*:1]",
+            "rho": 0.0 * unit.angstrom,
+            "beta": 0.0 * unit.angstrom**-1,
+            "c6": 0.0 * unit.kilojoule_per_mole * unit.nanometer**6,
+            "c8": 0.0 * unit.kilojoule_per_mole * unit.nanometer**8,
+            "c10": 0.0 * unit.kilojoule_per_mole * unit.nanometer**10,
+        }
+    )
+
+    ff.get_parameter_handler("Electrostatics")
+    library_charge = ff.get_parameter_handler("LibraryCharges")
+    library_charge.add_parameter(
+        {
+            "smirks": "[#1:1]-[#8X2H2+0]-[#1]",
+            "charge1": 1.4704118e-01 * unit.elementary_charge,
+        }
+    )
+    library_charge.add_parameter(
+        {
+            "smirks": "[#1]-[#8X2H2+0:1]-[#1]",
+            "charge1": -2.9408235e-01 * unit.elementary_charge,
+        }
+    )
+
+    multipole_handler = ff.get_parameter_handler(
+        "Multipole",
+        {
+            "version": "0.3",
+            "polarization_type": "direct",
+        },
+    )
+    multipole_handler.add_parameter(
+        {
+            "smirks": "[#1:1]-[#8X2H2+0:2]-[#1:3]",
+            "axisType": "ZThenX",
+            "multipoleAtomZ": "2",
+            "multipoleAtomX": "3",
+            "dipoleZ": "-0.83922167 * elementary_charge * bohr",
+            "dipoleX": "-0.27867409 * elementary_charge * bohr",
+            "polarity": "0 * angstrom**3",
+        }
+    )
+    multipole_handler.add_parameter(
+        {
+            "smirks": "[#1:2]-[#8X2H2+0:1]-[#1:3]",
+            "axisType": "Bisector",
+            "multipoleAtomZ": "2",
+            "multipoleAtomX": "3",
+            "dipoleZ": "0.022879731 * elementary_charge * bohr",
+            "polarity": "0 * angstrom**3",
+        }
+    )
+
+    water = Molecule.from_mapped_smiles("[O:1]([H:2])[H:3]")
+    water.generate_conformers(n_conformers=1)
+    off_top = Topology.from_molecules([water] * 2)
+
+    interchange = Interchange.from_smirnoff(ff, off_top)
+    omm_system = interchange.to_openmm_system(combine_nonbonded_forces=False)
+
+    multipole_forces = [
+        omm_system.getForce(i)
+        for i in range(omm_system.getNumForces())
+        if isinstance(omm_system.getForce(i), openmm.AmoebaMultipoleForce)
+    ]
+
+    assert len(multipole_forces) == 1
+
+    multipole_force: openmm.AmoebaMultipoleForce = multipole_forces[0]
+
+    assert multipole_force.getNumMultipoles() == 6
+
+    for idx in range(6):
+        params = multipole_force.getMultipoleParameters(idx)
+        assert params[6] == -1
+        if idx % 3 == 0:
+            assert from_openmm(params[0]).m == pytest.approx(-2.9408235e-01)
+            assert from_openmm(params[1][2]).m == pytest.approx(0.022879731 * 0.0529177)
+            assert params[3] == openmm.AmoebaMultipoleForce.Bisector
+        else:
+            assert from_openmm(params[0]).m == pytest.approx(1.4704118e-01)
+            assert from_openmm(params[1][0]).m == pytest.approx(-0.27867409 * 0.0529177)
+            assert from_openmm(params[1][2]).m == pytest.approx(-0.83922167 * 0.0529177)
+            assert params[3] == openmm.AmoebaMultipoleForce.ZThenX
+        if idx % 3 == 0:
+            assert params[4] == 2 + 3 * (idx // 3)
+            assert params[5] == 1 + 3 * (idx // 3)
+        elif idx % 3 == 1:
+            assert params[4] == 0 + 3 * (idx // 3)
+            assert params[5] == 2 + 3 * (idx // 3)
+        elif idx % 3 == 2:
+            assert params[4] == 0 + 3 * (idx // 3)
+            assert params[5] == 1 + 3 * (idx // 3)
+
+
 def test_non_lj_on_virtual_site(ideal_water_force_field):
     """
     Test virtual sites with non-12-6 interactions.

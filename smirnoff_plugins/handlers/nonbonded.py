@@ -1,6 +1,7 @@
 import abc
 
-from openff.toolkit import unit
+from openff.toolkit import Topology, unit
+from openff.toolkit.topology import SortedDict
 from openff.toolkit.typing.engines.smirnoff.parameters import (
     ElectrostaticsHandler,
     IncompatibleParameterError,
@@ -244,22 +245,25 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
                 "Bisector": openmm.AmoebaMultipoleForce.Bisector,
                 "ThreeFold": openmm.AmoebaMultipoleForce.ThreeFold,
             }
-            return axis_type_map[axis_type]
+            return axis_type_map[axis_type] * unit.dimensionless
 
         axisType = ParameterAttribute(
             default=openmm.AmoebaMultipoleForce.NoAxisType * unit.dimensionless,
-            unit=unit.dimensionless,
             converter=axis_converter,
         )
 
+        @staticmethod
+        def ensure_dimensionless(parameter):
+            return unit.Quantity(parameter)
+
         multipoleAtomZ = ParameterAttribute(
-            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+            default=-1 * unit.dimensionless, converter=ensure_dimensionless
         )
         multipoleAtomX = ParameterAttribute(
-            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+            default=-1 * unit.dimensionless, converter=ensure_dimensionless
         )
         multipoleAtomY = ParameterAttribute(
-            default=-1 * unit.dimensionless, unit=unit.dimensionless, converter=int
+            default=-1 * unit.dimensionless, converter=ensure_dimensionless
         )
 
         polarity = ParameterAttribute(
@@ -289,3 +293,24 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
     thole = ParameterAttribute(default=0.39, converter=float)
     target_epsilon = ParameterAttribute(default=0.00001, converter=float)
     max_iter = ParameterAttribute(default=60, converter=int)
+
+    def find_matches(self, entity: Topology, unique: bool = False) -> dict:
+        """Find the elements of the topology/molecule matched by a parameter type.
+
+        Parameters
+        ----------
+        entity
+            Topology to search.
+        unique
+            If False, SMARTS matching will enumerate every valid permutation of matching atoms.
+            If True, only one order of each unique match will be returned.
+
+        Returns
+        ---------
+        matches
+            ``matches[atom_indices]`` is the ``ParameterType`` object
+            matching the tuple of atom indices in ``entity``.
+        """
+
+        # All matches are required to set local axis definitions
+        return self._find_matches(entity, unique=unique, transformed_dict_cls=dict)
