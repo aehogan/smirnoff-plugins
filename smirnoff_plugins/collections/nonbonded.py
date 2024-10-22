@@ -1087,6 +1087,7 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
                         atom_map[unique_bonded_index] + base_atom_index
                         for unique_bonded_index in unique_bonded_list
                     ]
+                    atom_polarization_bonded.append(atom_index)
                     force.setCovalentMap(
                         atom_index,
                         openmm.AmoebaMultipoleForce.PolarizationCovalent11,
