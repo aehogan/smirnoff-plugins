@@ -994,7 +994,7 @@ def test_multipole_water():
     multipole_handler.add_parameter(
         {
             "smirks": "[#1:1]-[#8X2H2+0:2]-[#1:3]",
-            "axisType": "ZThenX",
+            "axisType": "0",
             "multipoleAtomZ": "2",
             "multipoleAtomX": "3",
             "dipoleZ": "-0.83922167 * elementary_charge * bohr",
@@ -1005,7 +1005,7 @@ def test_multipole_water():
     multipole_handler.add_parameter(
         {
             "smirks": "[#1:2]-[#8X2H2+0:1]-[#1:3]",
-            "axisType": "Bisector",
+            "axisType": "1",
             "multipoleAtomZ": "2",
             "multipoleAtomX": "3",
             "dipoleZ": "0.022879731 * elementary_charge * bohr",

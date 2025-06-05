@@ -238,27 +238,15 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
             default=0.0 * unit.elementary_charge * unit.nanometer**2,
             unit=unit.elementary_charge * unit.nanometer**2,
         )
-
+        
         @staticmethod
-        def axis_converter(axis_type):
-            axis_type_map = {
-                "NoAxisType": openmm.AmoebaMultipoleForce.NoAxisType,
-                "ZOnly": openmm.AmoebaMultipoleForce.ZOnly,
-                "ZThenX": openmm.AmoebaMultipoleForce.ZThenX,
-                "ZBisect": openmm.AmoebaMultipoleForce.ZBisect,
-                "Bisector": openmm.AmoebaMultipoleForce.Bisector,
-                "ThreeFold": openmm.AmoebaMultipoleForce.ThreeFold,
-            }
-            return axis_type_map[axis_type] * unit.dimensionless
+        def ensure_dimensionless(parameter):
+            return unit.Quantity(parameter) * unit.dimensionless
 
         axisType = ParameterAttribute(
             default=openmm.AmoebaMultipoleForce.NoAxisType * unit.dimensionless,
-            converter=axis_converter,
+            converter=ensure_dimensionless,
         )
-
-        @staticmethod
-        def ensure_dimensionless(parameter):
-            return unit.Quantity(parameter)
 
         multipoleAtomZ = ParameterAttribute(
             default=-1 * unit.dimensionless, converter=ensure_dimensionless
