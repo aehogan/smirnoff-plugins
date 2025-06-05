@@ -7,7 +7,6 @@ import math
 import numpy
 import openmm.unit
 from openff.toolkit import ForceField, Molecule, Quantity, Topology, unit
-from openff.toolkit.typing.engines.smirnoff import ParameterList
 from openff.utilities import get_data_file_path
 
 from smirnoff_plugins.utilities.openmm import simulate
