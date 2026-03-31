@@ -16,6 +16,13 @@ from openff.toolkit.typing.engines.smirnoff.parameters import ParameterHandler
 from openmm import CustomManyParticleForce, openmm
 from typing_extensions import Self
 
+try:
+    from tholedipoleplugin import TholeDipoleForce
+    THOLEDIPOLEPLUGIN_AVAILABLE = True
+except ImportError:
+    TholeDipoleForce = None
+    THOLEDIPOLEPLUGIN_AVAILABLE = False
+
 from smirnoff_plugins._types import (
     _DimensionlessQuantity,
     _DistanceQuantity,
@@ -587,9 +594,12 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
 
     is_plugin: bool = True
 
+    backend: str = "amoebamultipoleforce"
     periodic_method: str = "pme"
     nonperiodic_method: str = "no-cutoff"
     polarization_type: str = "extrapolated"
+    thole_damping_type: str = "amoeba"
+    damp_permanent_induced_field: bool = True
     cutoff: _DistanceQuantity = Quantity("0.9 nanometer")
     ewald_error_tolerance: float = 0.0001
     target_epsilon: float = 0.00001
@@ -597,9 +607,12 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
     thole: float = 0.39
 
     def store_potentials(self, parameter_handler: MultipoleHandler) -> None:
+        self.backend = parameter_handler.backend.lower()
         self.nonperiodic_method = parameter_handler.nonperiodic_method.lower()
         self.periodic_method = parameter_handler.periodic_method.lower()
         self.polarization_type = parameter_handler.polarization_type.lower()
+        self.thole_damping_type = parameter_handler.thole_damping_type.lower()
+        self.damp_permanent_induced_field = parameter_handler.damp_permanent_induced_field
         self.cutoff = parameter_handler.cutoff
         self.ewald_error_tolerance = parameter_handler.ewald_error_tolerance
         self.target_epsilon = parameter_handler.target_epsilon
@@ -690,6 +703,17 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
         constrained_pairs: Set[Tuple[int, ...]],
         particle_map: Dict[Union[int, "VirtualSiteKey"], int],
     ):
+        if self.backend == "tholedipoleplugin":
+            self._modify_openmm_forces_tholedipoleplugin(interchange, system)
+        else:
+            self._modify_openmm_forces_amoeba(interchange, system)
+
+    def _modify_openmm_forces_amoeba(
+        self,
+        interchange: Interchange,
+        system: openmm.System,
+    ):
+        """Create AmoebaMultipoleForce from OpenMM (default backend)."""
         # Sanity checks
         existing_multipole = [
             system.getForce(i)
@@ -1092,6 +1116,256 @@ class SMIRNOFFMultipoleCollection(SMIRNOFFCollection):
                         atom_index,
                         openmm.AmoebaMultipoleForce.PolarizationCovalent11,
                         atom_polarization_bonded,
+                    )
+
+    def _modify_openmm_forces_tholedipoleplugin(
+        self,
+        interchange: Interchange,
+        system: openmm.System,
+    ):
+        """Create TholeDipoleForce from tholedipoleplugin."""
+        if not THOLEDIPOLEPLUGIN_AVAILABLE:
+            raise ImportError(
+                "The 'tholedipoleplugin' package is required to use the 'tholedipoleplugin' backend. "
+                "Please install it or use the 'amoebamultipoleforce' backend instead."
+            )
+
+        # Check for existing TholeDipoleForce
+        existing_multipole = [
+            system.getForce(i)
+            for i in range(system.getNumForces())
+            if isinstance(system.getForce(i), TholeDipoleForce)
+        ]
+
+        assert (
+            len(existing_multipole) < 2
+        ), "multiple multipole forces are not yet correctly handled."
+
+        if len(existing_multipole) == 0:
+            force: TholeDipoleForce = TholeDipoleForce()
+            system.addForce(force)
+        else:
+            force = existing_multipole[0]
+
+        existing_nonbonded = [
+            system.getForce(i)
+            for i in range(system.getNumForces())
+            if isinstance(system.getForce(i), openmm.NonbondedForce)
+        ]
+
+        # Zero out charges in nonbonded forces to prevent double counting electrostatic interactions
+        nonbonded_force: openmm.NonbondedForce
+        for nonbonded_force in existing_nonbonded:
+            for i in range(nonbonded_force.getNumParticles()):
+                params = nonbonded_force.getParticleParameters(i)
+                params[0] = 0
+                nonbonded_force.setParticleParameters(i, *params)
+
+        existing_custom_bonds = [
+            system.getForce(i)
+            for i in range(system.getNumForces())
+            if isinstance(system.getForce(i), openmm.CustomBondForce)
+            and system.getForce(i).getEnergyFunction() == "138.935456*qq/r"
+        ]
+
+        # Zero out charges in custom bond forces with a Coulomb's law expression to prevent double counting
+        custom_bond_force: openmm.CustomBondForce
+        for custom_bond_force in existing_custom_bonds:
+            for i in range(custom_bond_force.getNumBonds()):
+                params = custom_bond_force.getBondParameters(i)
+                params[2] = (0.0,)
+                custom_bond_force.setBondParameters(i, *params)
+
+        topology: Topology = interchange.topology
+        charges = interchange.collections["Electrostatics"].charges  # type: ignore[attr-defined]
+
+        # Set options
+        method_map = {
+            "no-cutoff": TholeDipoleForce.NoCutoff,
+            "pme": TholeDipoleForce.PME,
+        }
+        if interchange.box is None:
+            force.setNonbondedMethod(method_map[self.nonperiodic_method])
+        else:
+            force.setNonbondedMethod(method_map[self.periodic_method])
+
+        polarization_type_map = {
+            "mutual": TholeDipoleForce.Mutual,
+            "direct": TholeDipoleForce.Direct,
+            "extrapolated": TholeDipoleForce.Extrapolated,
+        }
+        force.setPolarizationType(polarization_type_map[self.polarization_type])
+
+        thole_damping_type_map = {
+            "no_damping": TholeDipoleForce.NoDamping,
+            "exponential": TholeDipoleForce.Exponential,
+            "amoeba": TholeDipoleForce.Amoeba,
+            "linear": TholeDipoleForce.Linear,
+        }
+        force.setTholeDampingType(thole_damping_type_map[self.thole_damping_type])
+        force.setTholeDampingParameter(self.thole)
+        force.setDampPermanentInducedField(self.damp_permanent_induced_field)
+
+        force.setCutoffDistance(self.cutoff.m_as("nanometer"))
+        force.setEwaldErrorTolerance(self.ewald_error_tolerance)
+        force.setMutualInducedTargetEpsilon(self.target_epsilon)
+        force.setMutualInducedMaxIterations(self.max_iter)
+        force.setExtrapolationCoefficients([-0.154, 0.017, 0.658, 0.474])
+        force.setForceGroup(1)
+
+        # Add all particles with default parameters
+        # TholeDipoleForce.addParticle(charge, molecularDipole, polarizability, axisType, z, x, y)
+        for _ in range(topology.n_atoms):
+            force.addParticle(
+                0.0,                    # charge
+                [0.0, 0.0, 0.0],       # molecularDipole
+                0.0,                    # polarizability
+                TholeDipoleForce.NoAxisType,  # axisType (5)
+                -1,                     # multipoleAtomZ
+                -1,                     # multipoleAtomX
+                -1,                     # multipoleAtomY
+            )
+
+        # Copy partial charges from the electrostatics collection
+        for key, val in charges.items():
+            atom_idx = key.atom_indices[0]
+            params = force.getParticleParameters(atom_idx)
+            # getParticleParameters returns Quantities, strip them
+            charge = val.m_as("elementary_charge")
+            dipole = [p.value_in_unit(p.unit) for p in params[1]]
+            polarity = params[2].value_in_unit(params[2].unit)
+            force.setParticleParameters(atom_idx, charge, dipole, polarity, params[3], params[4], params[5], params[6])
+
+        # Set the dipoles, polarity, and axis parameters
+        for key, val in self.key_map.items():
+            atom_idx = key.atom_indices[0]
+            params = force.getParticleParameters(atom_idx)
+            # getParticleParameters returns Quantities, strip them
+            charge = params[0].value_in_unit(params[0].unit)
+            z = params[4]
+            x = params[5]
+            y = params[6]
+
+            dipoleX = (
+                self.potentials[val]
+                .parameters["dipoleX"]
+                .m_as("elementary_charge * nanometer")
+            )
+            dipoleY = (
+                self.potentials[val]
+                .parameters["dipoleY"]
+                .m_as("elementary_charge * nanometer")
+            )
+            dipoleZ = (
+                self.potentials[val]
+                .parameters["dipoleZ"]
+                .m_as("elementary_charge * nanometer")
+            )
+
+            dipole = [dipoleX, dipoleY, dipoleZ]
+
+            axis_type = int(self.potentials[val].parameters["axisType"])
+
+            if self.potentials[val].parameters["multipoleAtomZ"] != -1:
+                z = int(
+                    key.atom_indices[
+                        int(self.potentials[val].parameters["multipoleAtomZ"]) - 1
+                    ]
+                )
+            if self.potentials[val].parameters["multipoleAtomX"] != -1:
+                x = int(
+                    key.atom_indices[
+                        int(self.potentials[val].parameters["multipoleAtomX"]) - 1
+                    ]
+                )
+            if self.potentials[val].parameters["multipoleAtomY"] != -1:
+                y = int(
+                    key.atom_indices[
+                        int(self.potentials[val].parameters["multipoleAtomY"]) - 1
+                    ]
+                )
+
+            polarity = self.potentials[val].parameters["polarity"].m_as("nanometer**3")
+
+            force.setParticleParameters(atom_idx, charge, dipole, polarity, axis_type, z, x, y)
+
+        # Set covalent maps for exclusions
+        # TholeDipoleForce uses Covalent12, Covalent13, Covalent14 (no PolarizationCovalent11)
+        for unique_mol_index, mol_map in topology.identical_molecule_groups.items():
+            unique_mol = topology.molecule(unique_mol_index)
+            # bonded2, bonded3, bonded4: molecule_atom_index -> list of bonded atom indices
+            bonded2: dict[int, list[int]] = {}
+            bonded3: dict[int, list[int]] = {}
+            bonded4: dict[int, list[int]] = {}
+
+            atom1: Atom
+            atom2: Atom
+            for atom1, atom2 in unique_mol.nth_degree_neighbors(1):
+                if atom1.molecule_atom_index not in bonded2:
+                    bonded2[atom1.molecule_atom_index] = [atom2.molecule_atom_index]
+                else:
+                    bonded2[atom1.molecule_atom_index].append(atom2.molecule_atom_index)
+
+                if atom2.molecule_atom_index not in bonded2:
+                    bonded2[atom2.molecule_atom_index] = [atom1.molecule_atom_index]
+                else:
+                    bonded2[atom2.molecule_atom_index].append(atom1.molecule_atom_index)
+
+            for atom1, atom2 in unique_mol.nth_degree_neighbors(2):
+                if atom1.molecule_atom_index not in bonded3:
+                    bonded3[atom1.molecule_atom_index] = [atom2.molecule_atom_index]
+                else:
+                    bonded3[atom1.molecule_atom_index].append(atom2.molecule_atom_index)
+
+                if atom2.molecule_atom_index not in bonded3:
+                    bonded3[atom2.molecule_atom_index] = [atom1.molecule_atom_index]
+                else:
+                    bonded3[atom2.molecule_atom_index].append(atom1.molecule_atom_index)
+
+            for atom1, atom2 in unique_mol.nth_degree_neighbors(3):
+                if atom1.molecule_atom_index not in bonded4:
+                    bonded4[atom1.molecule_atom_index] = [atom2.molecule_atom_index]
+                else:
+                    bonded4[atom1.molecule_atom_index].append(atom2.molecule_atom_index)
+
+                if atom2.molecule_atom_index not in bonded4:
+                    bonded4[atom2.molecule_atom_index] = [atom1.molecule_atom_index]
+                else:
+                    bonded4[atom2.molecule_atom_index].append(atom1.molecule_atom_index)
+
+            for mol_index, atom_map in mol_map:
+                base_atom_index = topology.molecule_atom_start_index(
+                    topology.molecule(mol_index)
+                )
+
+                for unique_atom_index, unique_bonded_list in bonded2.items():
+                    atom_index = atom_map[unique_atom_index] + base_atom_index
+                    atom_bonded2 = [
+                        atom_map[unique_bonded_index] + base_atom_index
+                        for unique_bonded_index in unique_bonded_list
+                    ]
+                    force.setCovalentMap(
+                        atom_index, TholeDipoleForce.Covalent12, atom_bonded2
+                    )
+
+                for unique_atom_index, unique_bonded_list in bonded3.items():
+                    atom_index = atom_map[unique_atom_index] + base_atom_index
+                    atom_bonded3 = [
+                        atom_map[unique_bonded_index] + base_atom_index
+                        for unique_bonded_index in unique_bonded_list
+                    ]
+                    force.setCovalentMap(
+                        atom_index, TholeDipoleForce.Covalent13, atom_bonded3
+                    )
+
+                for unique_atom_index, unique_bonded_list in bonded4.items():
+                    atom_index = atom_map[unique_atom_index] + base_atom_index
+                    atom_bonded4 = [
+                        atom_map[unique_bonded_index] + base_atom_index
+                        for unique_bonded_index in unique_bonded_list
+                    ]
+                    force.setCovalentMap(
+                        atom_index, TholeDipoleForce.Covalent14, atom_bonded4
                     )
 
     def modify_parameters(

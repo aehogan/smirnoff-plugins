@@ -272,6 +272,10 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
         LibraryChargeHandler,
     ]
 
+    backend = ParameterAttribute(
+        default="amoebamultipoleforce",
+        converter=_allow_only(["amoebamultipoleforce", "tholedipoleplugin"]),
+    )
     cutoff = ParameterAttribute(default=0.9 * unit.nanometer, unit=unit.nanometer)
     periodic_method = ParameterAttribute(default="PME", converter=_allow_only(["PME"]))
     nonperiodic_method = ParameterAttribute(
@@ -281,10 +285,31 @@ class MultipoleHandler(ParameterHandler, abc.ABC):
         default="extrapolated",
         converter=_allow_only(["mutual", "direct", "extrapolated"]),
     )
+    thole_damping_type = ParameterAttribute(
+        default="amoeba",
+        converter=_allow_only(["no_damping", "exponential", "amoeba", "linear"]),
+    )
+    damp_permanent_induced_field = ParameterAttribute(default=True, converter=bool)
     ewald_error_tolerance = ParameterAttribute(default=0.0001, converter=float)
     thole = ParameterAttribute(default=0.39, converter=float)
     target_epsilon = ParameterAttribute(default=0.00001, converter=float)
     max_iter = ParameterAttribute(default=60, converter=int)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._validate_backend_options()
+
+    def _validate_backend_options(self):
+        """Validate that backend and thole_damping_type are compatible."""
+        if (
+            self.backend == "amoebamultipoleforce"
+            and self.thole_damping_type != "amoeba"
+        ):
+            raise IncompatibleParameterError(
+                f"AmoebaMultipoleForce backend only supports 'amoeba' thole_damping_type, "
+                f"but got '{self.thole_damping_type}'. Use 'tholedipoleplugin' backend for "
+                f"other damping types (no_damping, exponential, linear)."
+            )
 
     def find_matches(self, entity: Topology, unique: bool = False) -> dict:
         """Find the elements of the topology/molecule matched by a parameter type.
